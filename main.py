@@ -5,8 +5,10 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 import asyncio
+import os
 
-bot = Bot(token='7375091871:AAHxOh7FBPWA0ZrYJZDri9bpU7d7QwGtkmU')
+
+bot = Bot(token=os.getenv('BOT_TOKEN'))
 dp = Dispatcher()
 
 
