@@ -28,8 +28,11 @@ class ChatGPT:
     @staticmethod
     def _load_prompt(prompt_name: str) -> str:
         prompt_path = os.path.join('resources', 'prompts', f'{prompt_name}.txt')
-        with open(prompt_path, 'r', encoding='UTF-8') as file:
-            prompt = file.read()
+        if not os.path.isfile(prompt_path):
+            prompt = prompt_name
+        else:
+            with open(prompt_path, 'r', encoding='UTF-8') as file:
+                prompt = file.read()
         return prompt
 
 
