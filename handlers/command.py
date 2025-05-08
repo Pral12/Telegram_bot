@@ -3,10 +3,14 @@ from aiogram.filters import Command
 from aiogram.types import Message, FSInputFile
 from aiogram.enums import ChatAction
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.memory import MemoryStorage
 from keyboards import kb_replay, ikb_celebrity
 import os
 from classes import gpt_client, ChatGPT
 from .hendlers_state import GPTStateRequests
+from .quiz_game import QuizGame, register_quiz_handlers
+
+
 
 command_router = Router()
 
@@ -31,6 +35,7 @@ async def wait_for_gpt_handler(message: Message, state: FSMContext, bot: Bot):
             caption=msg_text,
         )
     # await state.clear()
+
 
 @command_router.message(F.text == "Закончить")
 @command_router.message(Command('start'))
@@ -104,3 +109,23 @@ async def com_talk(message: Message, state: FSMContext, bot: Bot):
         caption=msg_text,
         reply_markup=ikb_celebrity(),
     )
+
+
+@command_router.message(Command('quiz'))
+async def com_quiz(message: Message, state: FSMContext, bot: Bot):
+    quiz_game = QuizGame(bot)
+    register_quiz_handlers(command_router, quiz_game)
+    await bot.send_chat_action(
+        chat_id=message.from_user.id,
+        action=ChatAction.TYPING,
+    )
+    photo_path = os.path.join('resources', 'images', 'quiz.jpg')
+    text_path = os.path.join('resources', 'messages', 'quiz.txt')
+    photo = FSInputFile(photo_path)
+    with open(text_path, 'r', encoding='UTF-8') as file:
+        msg_text = file.read()
+    await message.answer_photo(
+        photo=photo,
+        caption=msg_text,
+    )
+    await quiz_game.start_quiz(message, state)
