@@ -34,7 +34,8 @@ async def wait_for_gpt_handler(message: Message, state: FSMContext, bot: Bot):
 
 @command_router.message(F.text == "Закончить")
 @command_router.message(Command('start'))
-async def com_start(message: Message):
+async def com_start(message: Message, state: FSMContext):
+    await state.clear()
     photo_path = os.path.join('resources', 'images', 'main.jpg')
     text_path = os.path.join('resources', 'messages', 'main.txt')
     photo = FSInputFile(photo_path)
@@ -85,6 +86,7 @@ async def com_gpt(message: Message, state: FSMContext, bot: Bot):
         reply_markup=kb_replay(buttons),
     )
     await state.set_state(GPTStateRequests.waiting_for_request)
+
 
 @command_router.message(Command('talk'))
 async def com_talk(message: Message, state: FSMContext, bot: Bot):
