@@ -2,6 +2,9 @@ from  aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 
 def kb_replay(buttons):
+    '''принимает список строк (например: ('/start', '/quiz', '/help')) и
+     создаёт обычную клавиатуру с этими кнопками.'''
+
     keyboard = ReplyKeyboardBuilder()
     for button in buttons:
         keyboard.button(

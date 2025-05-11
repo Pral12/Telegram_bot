@@ -3,6 +3,13 @@ from .callback_data import CelebrityData
 import os
 
 def ikb_celebrity():
+    '''динамически создаёт инлайн-клавиатуру с кнопками для выбора знаменитости,
+    с которой пользователь хочет "поговорить".
+    Каждая кнопка:
+    Отображает имя персонажа (например, «Альберт Эйнштейн»).
+    При нажатии отправляет callback с именем файла (talk_einstein и т.д.),
+    чтобы бот мог загрузить соответствующий промпт и изображение.'''
+
     keyboard = InlineKeyboardBuilder()
     path_celebrity = os.path.join('resources', 'prompts')
     celebrity_list = [file for file in os.listdir(path_celebrity) if file.startswith('talk_')]

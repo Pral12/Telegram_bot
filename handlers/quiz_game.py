@@ -12,6 +12,7 @@ import httpx
 
 quiz_router = Router()
 
+#Константы
 IMAGE_PATH = "resources/images/quiz.jpg"
 PROMPT_FILE = "resources/prompts/quiz.txt"
 DB_NAME = "quiz_results.db"
@@ -28,6 +29,8 @@ TOPICS = {
 
 class QuizGame:
     def __init__(self, bot: Bot):
+        '''Инициализирует SQLite базу данных.
+        Инициализирует GPT клиент с прокси.'''
         self.bot = bot
         self.init_db()
         self._gpt_token = os.getenv('GPT_TOKEN')
@@ -35,6 +38,7 @@ class QuizGame:
         self._client = self._create_client()
 
     def _create_client(self):
+        '''Создаёт асинхронный клиент OpenAI с поддержкой прокси через httpx'''
         gpt_client = openai.AsyncOpenAI(
             api_key=self._gpt_token,
             http_client=httpx.AsyncClient(
@@ -75,7 +79,10 @@ class QuizGame:
         await message.answer("Выберите тему квиза:", reply_markup=keyboard)
 
     async def handle_quiz_choice(self, callback_query: CallbackQuery, state: FSMContext, topic_key: str):
-        await callback_query.answer()  # ⬅️ Обязательная строка для реакции на кнопку
+        '''Получает тему из callback_data.
+        Запрашивает GPT новый вопрос и ответ.
+        Отправляет фото и текст вопроса'''
+        await callback_query.answer()
 
         if topic_key == "quiz_more":
             data = await state.get_data()
@@ -107,6 +114,9 @@ class QuizGame:
             await callback_query.message.answer(f"❌ Ошибка при генерации вопроса: {escape(str(e))}")
 
     async def generate_quiz(self, topic_desc):
+        '''Составляет промпт на основе темы.
+        Вызывает GPT-3.5-Turbo.
+        Парсит ответ'''
         prompt = BASE_PROMPT + '\nФормат вывода:\nВопрос: ...\nОтвет: ...\nОТВЕЧАЙ СТРОГО В ЭТОМ ФОРМАТЕ!' + f"\nСоставь вопрос по теме: {topic_desc}"
 
         print(f"[DEBUG] Промт:\n{prompt}")
@@ -146,7 +156,10 @@ class QuizGame:
             raise Exception(f"Ошибка при генерации вопроса: {e}")
 
     async def evaluate_answer(self, message: Message, state: FSMContext):
-        """Оценивает ответ пользователя и предлагает действия."""
+        """Сравнивает ответ пользователя с правильным.
+            Формирует обратную связь.
+            Предлагает действия: «Еще вопрос», «Статистика» и т.д.
+            Сохраняет результат в БД."""
         print(f"[DEBUG] Текущий user_id: {message.from_user.id}")
         data = await state.get_data()
         correct_answer = data["correct_answer"].lower()
@@ -185,6 +198,10 @@ class QuizGame:
         await state.update_data(question=None, correct_answer=None)
 
     async def evaluate_answer_with_gpt(self, correct_answer: str, user_answer: str, topic_desc: str) -> int:
+        '''Отправляет GPT информацию о правильном и пользовательском ответе.
+            Получает числовую оценку (0–10).
+            Возвращает число как оценку.'''
+
         prompt = f"""
     Твоя задача — оценить, насколько пользовательский ответ соответствует правильному по смыслу.
     Оцени ответ по шкале от 0 до 10:
@@ -222,6 +239,12 @@ class QuizGame:
             return 0
 
     def save_result_to_db(self, user_id, topic, question, user_answer, correct_answer, score):
+        '''Записывает:
+            ID пользователя.
+            Тему.
+            Вопрос и ответы.
+            Оценку.'''
+
         print(f"[DEBUG] Сохраняем результат:")
         print(f"user_id: {user_id}")
         print(f"topic: {topic}")
@@ -247,7 +270,11 @@ class QuizGame:
         return difflib.SequenceMatcher(None, a, b).ratio()
 
     async def show_stats(self, user_id, message: Message):
-        """Показывает статистику пользователя по темам."""
+        """Показывает статистику пользователя по темам.
+        Делает выборку из БД.
+        Вычисляет средний балл.
+        Выводит статистику по темам."""
+
         print(f"[DEBUG] Текущий user_id: {user_id}")
 
         with sqlite3.connect(DB_NAME) as conn:
@@ -290,16 +317,21 @@ class QuizGame:
 
 
 def register_quiz_handlers(quiz_router, quiz_game: QuizGame):
+    '''Регистрирует все обработчики:'''
+
     @quiz_router.callback_query(F.data.in_(["quiz_prog", "quiz_math", "quiz_biology", "quiz_more"]))
     async def handle_quiz_callback(callback_query: CallbackQuery, state: FSMContext):
+        '''Начать викторину по выбранной теме'''
         await quiz_game.handle_quiz_choice(callback_query, state, callback_query.data)
 
     @quiz_router.message(GPTStateRequests.quiz_game)
     async def process_answer(message: Message, state: FSMContext):
+        '''Обработать ответ пользователя'''
         await quiz_game.evaluate_answer(message, state)
 
     @quiz_router.callback_query(F.data == "quiz_again")
     async def handle_again(callback_query: CallbackQuery, state: FSMContext):
+        '''Еще один вопрос'''
         await callback_query.answer()
 
         data = await state.get_data()
@@ -313,6 +345,7 @@ def register_quiz_handlers(quiz_router, quiz_game: QuizGame):
 
     @quiz_router.callback_query(F.data == "main_menu")
     async def handle_main_menu(callback_query: CallbackQuery, state: FSMContext):
+        '''Вернуться в главное меню'''
         await callback_query.answer()  # Подтверждаем нажатие на кнопку
 
         await state.clear()
@@ -331,6 +364,7 @@ def register_quiz_handlers(quiz_router, quiz_game: QuizGame):
 
     @quiz_router.callback_query(F.data == "quiz_stats")
     async def handle_quiz_stats(callback_query: CallbackQuery, state: FSMContext):
+        '''Посмотреть статистику'''
         await callback_query.answer()
         user_id = callback_query.from_user.id
         await quiz_game.show_stats(user_id, callback_query.message)

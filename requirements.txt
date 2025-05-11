@@ -1,0 +1,7 @@
+aiogram>=3.0.0b8,<4.0.0
+openai>=1.0.0
+httpx>=0.23.0
+python-dotenv>=1.0.0
+databases>=0.6.0
+difflib
+asyncio

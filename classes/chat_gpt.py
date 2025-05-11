@@ -7,6 +7,7 @@ class ChatGPT:
     _instance = None
 
     def __new__(cls, *args, **kwargs):
+        '''Гарантирует, что будет создан только один экземпляр класса.'''
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             return cls._instance
@@ -27,6 +28,8 @@ class ChatGPT:
 
     @staticmethod
     def _load_prompt(prompt_name: str) -> str:
+        '''Загружает промпт из файла.
+        Если файла нет — возвращается имя промпта как строка (резервный вариант).'''
         prompt_path = os.path.join('resources', 'prompts', f'{prompt_name}.txt')
         if os.path.isfile(prompt_path):
             with open(prompt_path, 'r', encoding='UTF-8') as file:
@@ -36,6 +39,9 @@ class ChatGPT:
         return prompt
 
     def _init_message(self, prompt_name: str) -> dict[str, str | list[dict[str, str]]]:
+        ''' Формирует начальное сообщение для GPT.
+        Включает системное сообщение из промпта и модель GPT.'''
+
         return {'messages': [
             {'role': 'system',
              'content': self._load_prompt(prompt_name),
@@ -45,12 +51,18 @@ class ChatGPT:
         }
 
     async def random_request(self) -> str:
+        '''Запрашивает случайный факт.
+        Использует промпт из файла random.txt.'''
+
         response = await self._client.chat.completions.create(
             **self._init_message('random'),
         )
         return response.choices[0].message.content
 
     async def gpt_request(self, request_text: str) -> str:
+        '''Отвечает на произвольный пользовательский запрос.
+        Использует промпт gpt.txt.'''
+
         key_args = self._init_message('gpt')
         key_args['messages'].append({'role': 'user', 'content': request_text})
         response = await self._client.chat.completions.create(
@@ -59,6 +71,9 @@ class ChatGPT:
         return response.choices[0].message.content
 
     async def celebrity_request(self, prompt: str, history) -> str:
+        '''Диалог с "знаменитостью".
+        Передаётся контекст (имя знаменитости) и история диалога.'''
+
         key_args = self._init_message(prompt)
         for hist in history:
             key_args['messages'].append(hist)

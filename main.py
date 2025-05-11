@@ -16,6 +16,10 @@ dp = Dispatcher()
 
 
 async def start_bot():
+    """
+        Функция для запуска бота. Здесь регистрируются хуки при старте и остановке,
+        подключаются роутеры с обработчиками и начинается опрос серверов Telegram.
+        """
     dp.startup.register(misc.on_start)
     dp.shutdown.register(misc.on_shutdown)
     dp.include_router(main_router)

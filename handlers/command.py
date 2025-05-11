@@ -17,6 +17,9 @@ command_router = Router()
 
 @command_router.message(GPTStateRequests.waiting_for_request)
 async def wait_for_gpt_handler(message: Message, state: FSMContext, bot: Bot):
+    ''' Обрабатывает текст от пользователя, когда он находится в состоянии waiting_for_request.
+        Если приходит "Закончить" или /start, состояние сбрасывается.
+        В противном случае отправляется запрос к GPT и результат показывается с картинкой.'''
     if message.text.strip() == 'Закончить' or message.text.strip() == '/start':
         await message.answer(
             text='Введите команду "/start" или нажмите повторно кнопку "Закончить"',
@@ -40,6 +43,9 @@ async def wait_for_gpt_handler(message: Message, state: FSMContext, bot: Bot):
 @command_router.message(F.text == "Закончить")
 @command_router.message(Command('start'))
 async def com_start(message: Message, state: FSMContext):
+    '''Срабатывает на команду /start или кнопку «Закончить».
+        Сбрасывает текущее состояние FSM.
+        Отправляет приветственное фото и текст + клавиатуру с командами.'''
     await state.clear()
     photo_path = os.path.join('resources', 'images', 'main.jpg')
     text_path = os.path.join('resources', 'messages', 'main.txt')
@@ -56,6 +62,8 @@ async def com_start(message: Message, state: FSMContext):
 @command_router.message(F.text == "Хочу еще факт")
 @command_router.message(Command('random'))
 async def com_random(message: Message, bot: Bot):
+    '''Запрашивает случайный факт через gpt_client.random_request().
+        Отправляет фото и текст с фактом + две кнопки.'''
     await bot.send_chat_action(
         chat_id=message.from_user.id,
         action=ChatAction.TYPING,
@@ -75,6 +83,8 @@ async def com_random(message: Message, bot: Bot):
 @command_router.message(F.text == "Задать вопрос gpt")
 @command_router.message(Command('gpt'))
 async def com_gpt(message: Message, state: FSMContext, bot: Bot):
+    '''Переводит пользователя в состояние ожидания запроса к GPT.
+        Показывает инструкцию и клавиатуру.'''
     await bot.send_chat_action(
         chat_id=message.from_user.id,
         action=ChatAction.TYPING,
@@ -95,6 +105,8 @@ async def com_gpt(message: Message, state: FSMContext, bot: Bot):
 
 @command_router.message(Command('talk'))
 async def com_talk(message: Message, state: FSMContext, bot: Bot):
+    '''Предназначен для "разговора с известностью".
+        Отправляет фото и инлайн-клавиатуру с выбором персонажа (ikb_celebrity()).'''
     await bot.send_chat_action(
         chat_id=message.from_user.id,
         action=ChatAction.TYPING,
@@ -113,6 +125,8 @@ async def com_talk(message: Message, state: FSMContext, bot: Bot):
 
 @command_router.message(Command('quiz'))
 async def com_quiz(message: Message, state: FSMContext, bot: Bot):
+    '''Начинает игру-викторину.
+    Создаёт экземпляр QuizGame, регистрирует обработчики и запускает игру.'''
     quiz_game = QuizGame(bot)
     register_quiz_handlers(command_router, quiz_game)
     await bot.send_chat_action(
