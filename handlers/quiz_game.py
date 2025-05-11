@@ -1,41 +1,31 @@
 import os
-import sys
 import sqlite3
-from datetime import datetime
 from aiogram.types import FSInputFile, Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram import Bot, F
-from keyboards import kb_replay, ikb_celebrity
+from aiogram import Bot, F, Router
+from keyboards import kb_replay
+from .hendlers_state import GPTStateRequests
+from html import escape
 import openai
 import difflib
 import httpx
 
+quiz_router = Router()
 
-# === Константы ===
 IMAGE_PATH = "resources/images/quiz.jpg"
 PROMPT_FILE = "resources/prompts/quiz.txt"
 DB_NAME = "quiz_results.db"
 
-# === Загрузка промта из файла ===
-
 with open(PROMPT_FILE, "r", encoding="utf-8") as f:
     BASE_PROMPT = f.read().strip()
 
-# === Темы квизов ===
 TOPICS = {
-    "quiz_prog": ("программирования на языке python", "quiz_prog"),
-    "quiz_math": ("теорий алгоритмов, теории множеств и матанализа", "quiz_math"),
-    "quiz_biology": ("биологии", "quiz_biology")
+    "quiz_prog": ("Программирование python", "quiz_prog"),
+    "quiz_math": ("Математика, алгебра, геометрия", "quiz_math"),
+    "quiz_biology": ("Биология", "quiz_biology")
 }
 
 
-# === FSM состояние ===
-class QuizStates(StatesGroup):
-    waiting_for_answer = State()  # Ожидание ответа на вопрос
-
-
-# === Класс, реализующий логику игры ===
 class QuizGame:
     def __init__(self, bot: Bot):
         self.bot = bot
@@ -80,7 +70,6 @@ class QuizGame:
             [InlineKeyboardButton(text="💻 Программирование", callback_data="quiz_prog")],
             [InlineKeyboardButton(text="🧮 Математика", callback_data="quiz_math")],
             [InlineKeyboardButton(text="🔬 Биология", callback_data="quiz_biology")],
-            [InlineKeyboardButton(text="🔁 Ещё вопрос", callback_data="quiz_more")]
         ])
 
         await message.answer("Выберите тему квиза:", reply_markup=keyboard)
@@ -95,7 +84,7 @@ class QuizGame:
                 return
             topic_key = data["topic"]
 
-        topic_desc, _ = TOPICS[topic_key]
+        topic_desc = topic_key
 
         try:
             question, correct_answer = await self.generate_quiz(topic_desc)
@@ -106,7 +95,7 @@ class QuizGame:
                 correct_answer=correct_answer
             )
 
-            await state.set_state(QuizStates.waiting_for_answer)
+            await state.set_state(GPTStateRequests.quiz_game)
 
             photo = FSInputFile(IMAGE_PATH)
             await self.bot.send_photo(
@@ -115,7 +104,7 @@ class QuizGame:
                 caption=f"❓ Вопрос: {question}"
             )
         except Exception as e:
-            await callback_query.message.answer(f"❌ Ошибка при генерации вопроса: {e}")
+            await callback_query.message.answer(f"❌ Ошибка при генерации вопроса: {escape(str(e))}")
 
     async def generate_quiz(self, topic_desc):
         prompt = BASE_PROMPT + '\nФормат вывода:\nВопрос: ...\nОтвет: ...\nОТВЕЧАЙ СТРОГО В ЭТОМ ФОРМАТЕ!' + f"\nСоставь вопрос по теме: {topic_desc}"
@@ -134,9 +123,10 @@ class QuizGame:
             if not content:
                 raise ValueError("Пустой ответ от GPT")
 
-            # Проверяем наличие маркеров
             if 'Вопрос:' not in content or 'Ответ:' not in content:
-                raise ValueError("Формат ответа не содержит 'Вопрос:' или 'Ответ:'")
+                print(f'prompt = {prompt}')
+                print(f'content = {content}')
+                await self.generate_quiz(topic_desc)
 
             lines = [line for line in content.split('\n') if line.strip()]
             question_line = next(line for line in lines if line.startswith("Вопрос:"))
@@ -164,7 +154,6 @@ class QuizGame:
         question = data["question"]
         topic = data["topic"]
 
-        # === Оценка через GPT (или difflib) ===
         score = await self.evaluate_answer_with_gpt(correct_answer, user_answer, topic)
 
         if score == 10:
@@ -182,10 +171,8 @@ class QuizGame:
 
         await message.answer(feedback, parse_mode=None)
 
-        # === ВСЕГДА сохраняем результат в БД ===
         self.save_result_to_db(message.from_user.id, topic, question, user_answer, correct_answer, score)
 
-        # === Отправляем инлайн-кнопки ===
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="🔁 Еще вопрос", callback_data="quiz_again"),
@@ -195,7 +182,6 @@ class QuizGame:
         ])
         await message.answer("Выберите действие:", reply_markup=keyboard)
 
-        # === Только после всего очищаем состояние ===
         await state.update_data(question=None, correct_answer=None)
 
     async def evaluate_answer_with_gpt(self, correct_answer: str, user_answer: str, topic_desc: str) -> int:
@@ -235,7 +221,6 @@ class QuizGame:
             print(f"[ERROR] Ошибка при оценке через GPT: {e}")
             return 0
 
-
     def save_result_to_db(self, user_id, topic, question, user_answer, correct_answer, score):
         print(f"[DEBUG] Сохраняем результат:")
         print(f"user_id: {user_id}")
@@ -257,15 +242,13 @@ class QuizGame:
         except Exception as e:
             print(f"[ERROR] Не удалось сохранить в БД: {e}")
 
-
     def calculate_similarity(self, a, b):
         """Возвращает коэффициент схожести двух строк."""
         return difflib.SequenceMatcher(None, a, b).ratio()
 
-    async def show_stats(self, message: Message):
+    async def show_stats(self, user_id, message: Message):
         """Показывает статистику пользователя по темам."""
-        print(f"[DEBUG] Текущий user_id: {message.from_user.id}")
-        user_id = message.from_user.id
+        print(f"[DEBUG] Текущий user_id: {user_id}")
 
         with sqlite3.connect(DB_NAME) as conn:
             cursor = conn.cursor()
@@ -301,23 +284,21 @@ class QuizGame:
 
         for topic, data in stats.items():
             avg = round(data["total_score"] / data["count"], 2)
-            output += f"• {topic}: {data['count']} вопросов, средний балл — {avg}/10\n"
+            output += f"• {TOPICS[topic][0]}: {data['count']} вопросов, средний балл — {avg}/10\n"
 
         await message.answer(output)
 
 
-# === Регистрация обработчиков внутри модуля ===
-def register_quiz_handlers(dp, quiz_game: QuizGame):
-    @dp.callback_query(F.data.in_(["quiz_prog", "quiz_math", "quiz_biology", "quiz_more"]))
+def register_quiz_handlers(quiz_router, quiz_game: QuizGame):
+    @quiz_router.callback_query(F.data.in_(["quiz_prog", "quiz_math", "quiz_biology", "quiz_more"]))
     async def handle_quiz_callback(callback_query: CallbackQuery, state: FSMContext):
         await quiz_game.handle_quiz_choice(callback_query, state, callback_query.data)
 
-    @dp.message(QuizStates.waiting_for_answer)
+    @quiz_router.message(GPTStateRequests.quiz_game)
     async def process_answer(message: Message, state: FSMContext):
         await quiz_game.evaluate_answer(message, state)
 
-    # === Обработка действий после ответа ===
-    @dp.callback_query(F.data == "quiz_again")
+    @quiz_router.callback_query(F.data == "quiz_again")
     async def handle_again(callback_query: CallbackQuery, state: FSMContext):
         await callback_query.answer()
 
@@ -328,17 +309,14 @@ def register_quiz_handlers(dp, quiz_game: QuizGame):
             await callback_query.message.answer("Сначала выберите тему.")
             return
 
-        # Генерируем новый вопрос по той же теме
         await quiz_game.handle_quiz_choice(callback_query, state, topic)
 
-    @dp.callback_query(F.data == "main_menu")
+    @quiz_router.callback_query(F.data == "main_menu")
     async def handle_main_menu(callback_query: CallbackQuery, state: FSMContext):
         await callback_query.answer()  # Подтверждаем нажатие на кнопку
 
-        # Очищаем состояние
         await state.clear()
 
-        # Отправляем главное меню (например, с картинкой)
         photo = FSInputFile("resources/images/main.jpg")
         text_path = "resources/messages/main.txt"
 
@@ -351,7 +329,8 @@ def register_quiz_handlers(dp, quiz_game: QuizGame):
             reply_markup=kb_replay(buttons)  # твоя клавиатура
         )
 
-    @dp.callback_query(F.data == "quiz_stats")
+    @quiz_router.callback_query(F.data == "quiz_stats")
     async def handle_quiz_stats(callback_query: CallbackQuery, state: FSMContext):
         await callback_query.answer()
-        await quiz_game.show_stats(callback_query.message)
+        user_id = callback_query.from_user.id
+        await quiz_game.show_stats(user_id, callback_query.message)
